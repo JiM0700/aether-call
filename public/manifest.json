@@ -1,0 +1,17 @@
+{
+  "name": "AetherCall - Zero-Storage Secure Video",
+  "short_name": "AetherCall",
+  "description": "Secure, zero-storage peer-to-peer audio & video calling with device stabilization and adaptive quality.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

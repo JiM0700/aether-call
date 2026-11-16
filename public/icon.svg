@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="28" fill="#0b0f19" />
+  <rect x="2" y="2" width="96" height="96" rx="26" stroke="url(#glow)" stroke-width="2" stroke-opacity="0.6"/>
+  <!-- Video Cam icon -->
+  <path d="M26 36C26 32.6863 28.6863 30 32 30H56C59.3137 30 62 32.6863 62 36V64C62 67.3137 59.3137 70 56 70H32C28.6863 70 26 67.3137 26 64V36Z" fill="url(#glow)" />
+  <path d="M62 43.5L74.8 34.9C76.1333 34.0111 78 34.9667 78 36.5667V63.4333C78 65.0333 76.1333 65.9889 74.8 65.1L62 56.5V43.5Z" fill="url(#glow)" />
+  <!-- Lock badge -->
+  <circle cx="70" cy="30" r="12" fill="#10b981" />
+  <path d="M67 30V28C67 26.3431 68.3431 25 70 25C71.6569 25 73 26.3431 73 28V30M65 30H75V35H65V30Z" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+</svg>
