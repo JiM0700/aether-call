@@ -9,6 +9,7 @@ import {
   generateClientSecretKey,
   createShareableCallUrl,
   parseCallUrl,
+  getAppBasePath,
 } from './utils/crypto';
 import type { QualityLevel } from './utils/presets';
 
@@ -111,7 +112,8 @@ export const App: React.FC = () => {
   // Leave Call
   const handleLeaveCall = useCallback(() => {
     setIsInCall(false);
-    window.history.pushState(null, '', '/');
+    const basePath = getAppBasePath();
+    window.history.pushState(null, '', basePath || '/');
     setCurrentRoomId(null);
     setClientKey(null);
   }, []);

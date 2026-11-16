@@ -4,9 +4,13 @@ import tailwindcss from '@tailwindcss/vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 
 // Check if SSL is enabled (defaults to true for camera/mic access across mobile devices on LAN)
-const useSsl = process.env.VITE_SSL !== 'false';
+const useSsl = process.env.VITE_SSL !== 'false' && !process.env.GITHUB_PAGES;
+
+// Base path for GitHub Pages or custom domain
+const base = process.env.GITHUB_PAGES === 'true' ? '/aether-call/' : '/';
 
 export default defineConfig({
+  base,
   plugins: [
     react(),
     tailwindcss(),

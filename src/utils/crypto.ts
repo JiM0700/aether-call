@@ -2,6 +2,12 @@
  * Cryptographic security helpers for Zero-Storage and Client-Side E2EE
  */
 
+// Detect base path for GitHub Pages (/aether-call) or custom root (/)
+export function getAppBasePath(): string {
+  if (typeof window === 'undefined') return '';
+  return window.location.pathname.startsWith('/aether-call') ? '/aether-call' : '';
+}
+
 // Generate a cryptographically random room ID (e.g. "a9f4-bc32-7e1d")
 export function generateSecureRoomId(): string {
   const bytes = new Uint8Array(9);
@@ -21,10 +27,11 @@ export function generateClientSecretKey(): string {
     .join('');
 }
 
-// Build shareable link including the client-side hash key
+// Build shareable link including the client-side hash key and base path
 export function createShareableCallUrl(roomId: string, secretKey: string): string {
   const origin = window.location.origin;
-  return `${origin}/call/${roomId}#key=${secretKey}`;
+  const basePath = getAppBasePath();
+  return `${origin}${basePath}/call/${roomId}#key=${secretKey}`;
 }
 
 // Parse room ID and hash key from current URL

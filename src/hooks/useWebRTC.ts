@@ -136,11 +136,22 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
 
     setConnectionStatus('connecting');
 
-    // Connect to signaling server (relative URL for proxy support, or environment)
-    const socket = io({
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-    });
+    // Determine signaling server URL
+    const envUrl = (import.meta as any).env?.VITE_SIGNALING_URL;
+    const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
+    const localSavedRelay = typeof window !== 'undefined' ? localStorage.getItem('aether_signaling_url') : null;
+    const signalingTarget = envUrl || (isGitHubPages ? localSavedRelay || undefined : undefined);
+
+    // Connect to signaling server
+    const socket = signalingTarget
+      ? io(signalingTarget, {
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 5,
+        })
+      : io({
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 5,
+        });
     socketRef.current = socket;
 
     socket.on('connect', () => {
