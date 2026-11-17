@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Settings, Mic, Video, Volume2, Shield, Check } from 'lucide-react';
 import type { StabilizationMode } from '../utils/stabilization';
 import { detectDevice } from '../utils/deviceDetect';
@@ -11,10 +11,12 @@ interface DeviceSettingsProps {
   };
   selectedAudioDeviceId: string;
   selectedVideoDeviceId: string;
+  selectedAudioOutputId: string;
   stabilizationMode: StabilizationMode;
   isHardwareStabilized: boolean;
   onSelectAudioDevice: (id: string) => void;
   onSelectVideoDevice: (id: string) => void;
+  onSelectAudioOutput: (id: string) => void;
   onSelectStabilization: (mode: StabilizationMode) => void;
   onClose: () => void;
 }
@@ -23,18 +25,31 @@ export const DeviceSettings: React.FC<DeviceSettingsProps> = ({
   availableDevices,
   selectedAudioDeviceId,
   selectedVideoDeviceId,
+  selectedAudioOutputId,
   stabilizationMode,
   isHardwareStabilized,
   onSelectAudioDevice,
   onSelectVideoDevice,
+  onSelectAudioOutput,
   onSelectStabilization,
   onClose,
 }) => {
   const { canSetSinkId } = detectDevice();
 
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="max-w-md w-full glass-panel-elevated rounded-3xl p-6 border border-white/10 shadow-2xl space-y-5">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div className="max-w-md w-full glass-panel-elevated rounded-3xl p-6 border border-white/10 shadow-2xl space-y-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
@@ -143,7 +158,11 @@ export const DeviceSettings: React.FC<DeviceSettingsProps> = ({
               <Volume2 className="w-4 h-4 text-amber-400" />
               Speaker Output
             </label>
-            <select className="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+            <select
+              value={selectedAudioOutputId}
+              onChange={(e) => onSelectAudioOutput(e.target.value)}
+              className="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+            >
               {availableDevices.audioOutputs.map((d, index) => (
                 <option key={d.deviceId || index} value={d.deviceId}>
                   {d.label || `Speaker ${index + 1}`}

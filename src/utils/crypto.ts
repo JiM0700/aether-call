@@ -36,16 +36,31 @@ export function createShareableCallUrl(roomId: string, secretKey: string): strin
 
 // Parse room ID and hash key from current URL
 export function parseCallUrl(): { roomId: string | null; secretKey: string | null } {
+  if (typeof window === 'undefined') return { roomId: null, secretKey: null };
+
   const path = window.location.pathname;
   const match = path.match(/\/call\/([a-zA-Z0-9_-]+)/);
-  const roomId = match ? match[1] : null;
+  let roomId = match ? match[1] : null;
+
+  // Support query parameter fallback (e.g. ?room=xyz or ?roomId=xyz)
+  if (!roomId && window.location.search) {
+    const searchParams = new URLSearchParams(window.location.search);
+    roomId = searchParams.get('room') || searchParams.get('roomId') || null;
+  }
 
   let secretKey: string | null = null;
   const hash = window.location.hash;
   if (hash) {
-    const keyMatch = hash.match(/#key=([a-zA-Z0-9]+)/);
+    const keyMatch = hash.match(/#key=([a-zA-Z0-9]+)/) || hash.match(/[?&#]key=([a-zA-Z0-9]+)/);
     if (keyMatch) {
       secretKey = keyMatch[1];
+    }
+    // Also support #room=xyz if query was in hash
+    if (!roomId) {
+      const roomHashMatch = hash.match(/room=([a-zA-Z0-9_-]+)/);
+      if (roomHashMatch) {
+        roomId = roomHashMatch[1];
+      }
     }
   }
 

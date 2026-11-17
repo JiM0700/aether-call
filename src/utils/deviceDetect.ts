@@ -9,7 +9,10 @@ export interface DeviceCapabilities {
   hasHardwareStabilizationSupport: boolean;
 }
 
+let _cached: DeviceCapabilities | null = null;
+
 export function detectDevice(): DeviceCapabilities {
+  if (_cached) return _cached;
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
 
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -33,7 +36,7 @@ export function detectDevice(): DeviceCapabilities {
     hasHardwareStabilizationSupport = !!(supported?.videoStabilizationMode || supported?.stabilizationMode);
   }
 
-  return {
+  const result: DeviceCapabilities = {
     isMobile,
     isIOS,
     isAndroid,
@@ -43,4 +46,6 @@ export function detectDevice(): DeviceCapabilities {
     canSetSinkId,
     hasHardwareStabilizationSupport,
   };
+  _cached = result;
+  return result;
 }

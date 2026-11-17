@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { QualityLevel, QUALITY_PRESETS } from '../utils/presets';
 import { Sliders, Sparkles, Check, Wifi } from 'lucide-react';
 
@@ -15,9 +15,20 @@ export const QualityModal: React.FC<QualityModalProps> = ({
 }) => {
   const options: QualityLevel[] = ['auto', '4k', '1080p', '720p', '480p', '360p', 'audio-only'];
 
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="max-w-md w-full glass-panel-elevated rounded-3xl p-6 border border-white/10 shadow-2xl space-y-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div className="max-w-md w-full glass-panel-elevated rounded-3xl p-6 border border-white/10 shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">

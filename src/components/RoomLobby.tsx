@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Video,
   VideoOff,
@@ -24,7 +24,7 @@ interface RoomLobbyProps {
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onSetStabilization: (mode: StabilizationMode) => void;
-  onStartCall: () => void;
+  onStartCall: (customRoomId?: string) => void;
 }
 
 export const RoomLobby: React.FC<RoomLobbyProps> = ({
@@ -42,7 +42,18 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   onSetStabilization,
   onStartCall,
 }) => {
+  const [manualRoomInput, setManualRoomInput] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handleJoinOrStart = () => {
+    let target = roomId;
+    if (!target && manualRoomInput.trim()) {
+      const input = manualRoomInput.trim();
+      const match = input.match(/\/call\/([a-zA-Z0-9_-]+)/) || input.match(/[?&]room=([a-zA-Z0-9_-]+)/);
+      target = match ? match[1] : input.replace(/[^a-zA-Z0-9_-]/g, '');
+    }
+    onStartCall(target || undefined);
+  };
 
   useEffect(() => {
     if (videoRef.current && localStream) {
@@ -165,6 +176,29 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             />
           </div>
 
+          {roomId ? (
+            <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-between">
+              <span className="text-xs text-slate-300 font-medium">Room Code:</span>
+              <span className="font-mono text-xs font-bold text-blue-400 bg-blue-950/60 px-3 py-1 rounded-xl border border-blue-500/30">
+                {roomId}
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <span>Room Code or Link</span>
+                <span className="text-[10px] text-slate-400 font-normal">Optional</span>
+              </label>
+              <input
+                type="text"
+                value={manualRoomInput}
+                onChange={(e) => setManualRoomInput(e.target.value)}
+                placeholder="Paste code or link to join an existing call"
+                className="w-full bg-slate-900/80 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition font-mono"
+              />
+            </div>
+          )}
+
           {/* Stabilization Mode Selection */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
@@ -191,10 +225,10 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
 
           {/* Join / Start Button */}
           <button
-            onClick={onStartCall}
+            onClick={handleJoinOrStart}
             className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98]"
           >
-            <span>{roomId ? 'Join Call Now' : 'Create & Enter Call'}</span>
+            <span>{roomId || manualRoomInput.trim() ? 'Join Call Now' : 'Create & Enter Call'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
 

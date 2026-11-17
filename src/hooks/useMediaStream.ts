@@ -93,7 +93,12 @@ export function useMediaStream({
 
   // Acquire or re-acquire media stream
   const startStream = useCallback(
-    async (targetQuality: QualityLevel = quality, targetFacing: 'user' | 'environment' = facingMode) => {
+    async (
+      targetQuality: QualityLevel = quality,
+      targetFacing: 'user' | 'environment' = facingMode,
+      overrideVideoDeviceId?: string,
+      overrideAudioDeviceId?: string,
+    ) => {
       try {
         // Stop any current local tracks
         if (localStreamRef.current) {
@@ -103,6 +108,10 @@ export function useMediaStream({
         const preset = QUALITY_PRESETS[targetQuality === 'auto' ? '720p' : targetQuality];
         const isAudioOnly = targetQuality === 'audio-only';
 
+        // Resolve effective device IDs (overrides beat stale closure state)
+        const effectiveAudioDeviceId = overrideAudioDeviceId ?? selectedAudioDeviceId;
+        const effectiveVideoDeviceId = overrideVideoDeviceId ?? selectedVideoDeviceId;
+
         // High clarity audio constraints
         const audioConstraints: MediaTrackConstraints = {
           echoCancellation: true,
@@ -110,7 +119,7 @@ export function useMediaStream({
           autoGainControl: true,
           sampleRate: 48000,
           channelCount: 1,
-          ...(selectedAudioDeviceId ? { deviceId: { exact: selectedAudioDeviceId } } : {}),
+          ...(effectiveAudioDeviceId ? { deviceId: { exact: effectiveAudioDeviceId } } : {}),
         };
 
         // Video constraints with target stabilization
@@ -120,8 +129,8 @@ export function useMediaStream({
             width: preset.width ? { ideal: preset.width } : undefined,
             height: preset.height ? { ideal: preset.height } : undefined,
             frameRate: { ideal: preset.frameRate, max: preset.frameRate },
-            ...(selectedVideoDeviceId
-              ? { deviceId: { exact: selectedVideoDeviceId } }
+            ...(effectiveVideoDeviceId
+              ? { deviceId: { exact: effectiveVideoDeviceId } }
               : { facingMode: targetFacing }),
           };
           videoConstraints = buildStabilizedVideoConstraints(stabilizationMode, baseVideo);

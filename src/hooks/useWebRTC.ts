@@ -7,6 +7,12 @@ const ICE_SERVERS: RTCConfiguration = {
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
+    // TURN relay for symmetric NAT traversal (configure via env vars)
+    ...((import.meta as any).env?.VITE_TURN_URL ? [{
+      urls: (import.meta as any).env.VITE_TURN_URL as string,
+      username: ((import.meta as any).env?.VITE_TURN_USER || '') as string,
+      credential: ((import.meta as any).env?.VITE_TURN_CREDENTIAL || '') as string,
+    }] : []),
   ],
   iceCandidatePoolSize: 10,
 };
@@ -28,10 +34,12 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
   const [remoteParticipants, setRemoteParticipants] = useState<Map<string, RemoteParticipant>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
   const [participantCount, setParticipantCount] = useState<number>(1);
+  const [peerConnectionsVersion, setPeerConnectionsVersion] = useState<number>(0);
 
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(localStream);
   const screenStreamRef = useRef<MediaStream | null>(screenStream);
 
@@ -46,6 +54,7 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
 
     const pc = new RTCPeerConnection(ICE_SERVERS);
     peerConnectionsRef.current.set(targetSocketId, pc);
+    setPeerConnectionsVersion((v) => v + 1);
 
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
@@ -63,35 +72,62 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
       console.log(`[WebRTC] Peer ${targetSocketId} state:`, pc.connectionState);
       if (pc.connectionState === 'connected') {
         setConnectionStatus('connected');
-      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        // Handle temporary disconnect
+      } else if (pc.connectionState === 'failed') {
+        // Attempt ICE restart to recover the connection
+        console.log(`[WebRTC] Connection failed with ${targetSocketId}, attempting ICE restart...`);
+        pc.restartIce();
+        pc.createOffer({ iceRestart: true }).then((offer) => {
+          pc.setLocalDescription(offer);
+          socketRef.current?.emit('signal', {
+            to: targetSocketId,
+            type: 'offer',
+            data: offer,
+          });
+        }).catch((err) => {
+          console.error('[WebRTC] ICE restart failed:', err);
+        });
+      } else if (pc.connectionState === 'disconnected') {
+        setConnectionStatus('connecting');
       }
     };
 
     // Remote track arrival
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track from ${targetSocketId}:`, event.track.kind);
-      const [remoteMediaStream] = event.streams;
-      if (remoteMediaStream) {
-        // Set playoutDelayHint = 0 for minimum lag buffering if supported
-        if ('playoutDelayHint' in event.receiver) {
-          try {
-            (event.receiver as any).playoutDelayHint = 0;
-          } catch (e) {
-            // Ignore if unsupported
-          }
+      // Set playoutDelayHint = 0 for minimum lag buffering if supported
+      if ('playoutDelayHint' in event.receiver) {
+        try {
+          (event.receiver as any).playoutDelayHint = 0;
+        } catch (e) {
+          // Ignore if unsupported
         }
-
-        setRemoteParticipants((prev) => {
-          const next = new Map(prev);
-          next.set(targetSocketId, {
-            socketId: targetSocketId,
-            userName: targetUserName,
-            stream: remoteMediaStream,
-          });
-          return next;
-        });
       }
+
+      let remoteMediaStream = event.streams && event.streams[0];
+      if (!remoteMediaStream) {
+        let stream = remoteStreamsRef.current.get(targetSocketId);
+        if (!stream) {
+          stream = new MediaStream();
+          remoteStreamsRef.current.set(targetSocketId, stream);
+        }
+        if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+          stream.addTrack(event.track);
+        }
+        remoteMediaStream = stream;
+      } else {
+        remoteStreamsRef.current.set(targetSocketId, remoteMediaStream);
+      }
+
+      setRemoteParticipants((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(targetSocketId);
+        next.set(targetSocketId, {
+          socketId: targetSocketId,
+          userName: existing?.userName || targetUserName,
+          stream: remoteMediaStream,
+        });
+        return next;
+      });
     };
 
     // Add local tracks (camera or screen share)
@@ -204,7 +240,9 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
           // Process queued ICE candidates
           const queued = pendingCandidatesRef.current.get(from) || [];
           for (const cand of queued) {
-            await pc.addIceCandidate(new RTCIceCandidate(cand));
+            await pc.addIceCandidate(new RTCIceCandidate(cand)).catch((err) => {
+              console.warn('[WebRTC] addIceCandidate failed:', err);
+            });
           }
           pendingCandidatesRef.current.delete(from);
 
@@ -222,12 +260,16 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
           // Process queued ICE candidates
           const queued = pendingCandidatesRef.current.get(from) || [];
           for (const cand of queued) {
-            await pc.addIceCandidate(new RTCIceCandidate(cand));
+            await pc.addIceCandidate(new RTCIceCandidate(cand)).catch((err) => {
+              console.warn('[WebRTC] addIceCandidate failed:', err);
+            });
           }
           pendingCandidatesRef.current.delete(from);
         } else if (type === 'ice-candidate') {
           if (pc.remoteDescription && pc.remoteDescription.type) {
-            await pc.addIceCandidate(new RTCIceCandidate(data));
+            await pc.addIceCandidate(new RTCIceCandidate(data)).catch((err) => {
+              console.warn('[WebRTC] addIceCandidate failed:', err);
+            });
           } else {
             // Queue candidate until remote description is set
             const queue = pendingCandidatesRef.current.get(from) || [];
@@ -249,8 +291,10 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
       if (pc) {
         pc.close();
         peerConnectionsRef.current.delete(socketId);
+        setPeerConnectionsVersion((v) => v + 1);
       }
       pendingCandidatesRef.current.delete(socketId);
+      remoteStreamsRef.current.delete(socketId);
 
       setRemoteParticipants((prev) => {
         const next = new Map(prev);
@@ -267,6 +311,7 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
       pendingCandidatesRef.current.clear();
+      remoteStreamsRef.current.clear();
       setRemoteParticipants(new Map());
       setConnectionStatus('disconnected');
     };
@@ -277,5 +322,6 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
     connectionStatus,
     participantCount,
     peerConnections: peerConnectionsRef.current,
+    peerConnectionsVersion,
   };
 }

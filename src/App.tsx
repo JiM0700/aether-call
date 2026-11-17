@@ -11,13 +11,14 @@ import {
   parseCallUrl,
   getAppBasePath,
 } from './utils/crypto';
-import type { QualityLevel } from './utils/presets';
+import { QualityLevel, QUALITY_PRESETS } from './utils/presets';
 
 export const App: React.FC = () => {
   const [userName, setUserName] = useState<string>('Guest');
   const [isInCall, setIsInCall] = useState<boolean>(false);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [clientKey, setClientKey] = useState<string | null>(null);
+  const [selectedAudioOutputId, setSelectedAudioOutputId] = useState<string>('');
 
   // Initialize Media Stream Hook
   const {
@@ -71,6 +72,7 @@ export const App: React.FC = () => {
     connectionStatus,
     participantCount,
     peerConnections,
+    peerConnectionsVersion,
   } = useWebRTC({
     roomId: isInCall ? currentRoomId : null,
     userName,
@@ -79,15 +81,16 @@ export const App: React.FC = () => {
   });
 
   // Initialize Adaptive Bitrate & Network Telemetry
-  const telemetry = useAdaptiveBitrate({
+  const { telemetry, applyManualBitrate } = useAdaptiveBitrate({
     peerConnections,
+    peerConnectionsVersion,
     quality,
     enabled: isInCall,
   });
 
   // Start or Join a Call
-  const handleStartCall = useCallback(() => {
-    let roomId = currentRoomId;
+  const handleStartCall = useCallback((customRoomId?: string) => {
+    let roomId = customRoomId || currentRoomId;
     let secret = clientKey;
 
     if (!roomId) {
@@ -95,6 +98,8 @@ export const App: React.FC = () => {
       secret = generateClientSecretKey();
       setCurrentRoomId(roomId);
       setClientKey(secret);
+    } else if (customRoomId && customRoomId !== currentRoomId) {
+      setCurrentRoomId(customRoomId);
     }
 
     if (!secret) {
@@ -180,6 +185,7 @@ export const App: React.FC = () => {
           availableDevices={availableDevices}
           selectedAudioDeviceId={selectedAudioDeviceId}
           selectedVideoDeviceId={selectedVideoDeviceId}
+          selectedAudioOutputId={selectedAudioOutputId}
           onToggleAudio={toggleAudio}
           onToggleVideo={toggleVideo}
           onFlipCamera={flipCamera}
@@ -187,10 +193,21 @@ export const App: React.FC = () => {
           onSelectQuality={(q: QualityLevel) => {
             setQuality(q);
             startStream(q);
+            const preset = QUALITY_PRESETS[q];
+            if (q !== 'auto' && preset) {
+              applyManualBitrate(preset.maxBitrateKbps);
+            }
           }}
           onSelectStabilization={setStabilization}
-          onSelectAudioDevice={setSelectedAudioDeviceId}
-          onSelectVideoDevice={setSelectedVideoDeviceId}
+          onSelectAudioDevice={(id: string) => {
+            setSelectedAudioDeviceId(id);
+            startStream(quality, undefined, undefined, id);
+          }}
+          onSelectVideoDevice={(id: string) => {
+            setSelectedVideoDeviceId(id);
+            startStream(quality, undefined, id);
+          }}
+          onSelectAudioOutput={setSelectedAudioOutputId}
           onLeaveCall={handleLeaveCall}
         />
       )}

@@ -14,12 +14,14 @@ export interface NetworkTelemetry {
 
 export interface UseAdaptiveBitrateProps {
   peerConnections: Map<string, RTCPeerConnection>;
+  peerConnectionsVersion: number;
   quality: QualityLevel;
   enabled?: boolean;
 }
 
 export function useAdaptiveBitrate({
   peerConnections,
+  peerConnectionsVersion,
   quality,
   enabled = true,
 }: UseAdaptiveBitrateProps) {
@@ -64,124 +66,150 @@ export function useAdaptiveBitrate({
     []
   );
 
+  // Apply manual bitrate to all peer connections for non-auto quality modes
+  const applyManualBitrate = useCallback(
+    (maxBitrateKbps: number) => {
+      peerConnections.forEach((pc) => {
+        adjustEncoding(pc, maxBitrateKbps, 1);
+      });
+    },
+    [peerConnections, adjustEncoding]
+  );
+
   useEffect(() => {
     if (!enabled || peerConnections.size === 0) {
       return;
     }
 
     const interval = setInterval(async () => {
-      // Pick the primary active peer connection
-      const pc = peerConnections.values().next().value;
-      if (!pc || pc.connectionState !== 'connected') {
-        return;
+      let worstRtt = 0;
+      let worstLoss = 0;
+      let totalJitter = 0;
+      let totalBitrateKbps = 0;
+      let bestFps = 0;
+      let bestResWidth = 0;
+      let bestResHeight = 0;
+      let connectedCount = 0;
+
+      for (const [_id, pc] of peerConnections.entries()) {
+        if (pc.connectionState !== 'connected') continue;
+        connectedCount++;
+
+        try {
+          const stats = await pc.getStats();
+          const now = Date.now();
+          const timeDelta = (now - prevTimestampRef.current) / 1000;
+          prevTimestampRef.current = now;
+
+          let rtt = 0;
+          let jitter = 0;
+          let packetsLost = 0;
+          let packetsSent = 0;
+          let bytesSent = 0;
+          let fps = 0;
+          let resWidth = 0;
+          let resHeight = 0;
+
+          stats.forEach((report) => {
+            if (report.type === 'candidate-pair' && (report.selected || report.state === 'succeeded')) {
+              if (report.currentRoundTripTime !== undefined) {
+                rtt = Math.round(report.currentRoundTripTime * 1000);
+              }
+            }
+
+            if (report.type === 'outbound-rtp' && report.kind === 'video') {
+              bytesSent = report.bytesSent || 0;
+              packetsSent = report.packetsSent || 0;
+              if (report.framesPerSecond !== undefined) {
+                fps = Math.round(report.framesPerSecond);
+              }
+              if (report.frameWidth && report.frameHeight) {
+                resWidth = report.frameWidth;
+                resHeight = report.frameHeight;
+              }
+            }
+
+            if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+              packetsLost = report.packetsLost || 0;
+              if (report.jitter !== undefined) {
+                jitter = Math.round(report.jitter * 1000);
+              }
+            }
+          });
+
+          // Compute bitrate
+          const bytesDelta = Math.max(0, bytesSent - prevBytesSentRef.current);
+          const bitrateKbps = timeDelta > 0 ? Math.round((bytesDelta * 8) / (timeDelta * 1000)) : 0;
+          prevBytesSentRef.current = bytesSent;
+
+          // Compute packet loss rate
+          const sentDelta = Math.max(0, packetsSent - prevPacketsSentRef.current);
+          const lostDelta = Math.max(0, packetsLost - prevPacketsLostRef.current);
+          prevPacketsSentRef.current = packetsSent;
+          prevPacketsLostRef.current = packetsLost;
+
+          let packetLossPercent = 0;
+          if (sentDelta + lostDelta > 0) {
+            packetLossPercent = Math.min(100, Math.round((lostDelta / (sentDelta + lostDelta)) * 100));
+          }
+
+          // Track worst-case across all peers
+          worstRtt = Math.max(worstRtt, rtt);
+          worstLoss = Math.max(worstLoss, packetLossPercent);
+          totalJitter += jitter;
+          totalBitrateKbps += bitrateKbps;
+          if (fps > bestFps) bestFps = fps;
+          if (resWidth > bestResWidth) {
+            bestResWidth = resWidth;
+            bestResHeight = resHeight;
+          }
+
+          // AUTO ADAPTATION LOGIC (applied per-peer)
+          if (quality === 'auto') {
+            if (packetLossPercent > 8 || rtt > 450) {
+              pristineStreakRef.current = 0;
+              adjustEncoding(pc, 300, 2.5);
+            } else if (packetLossPercent > 3 || rtt > 220) {
+              pristineStreakRef.current = 0;
+              adjustEncoding(pc, 800, 1.5);
+            } else {
+              pristineStreakRef.current += 1;
+              if (pristineStreakRef.current >= 4) {
+                adjustEncoding(pc, 2500, 1);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[useAdaptiveBitrate] Stats collection failed for a peer:', err);
+        }
       }
 
-      try {
-        const stats = await pc.getStats();
-        const now = Date.now();
-        const timeDelta = (now - prevTimestampRef.current) / 1000;
-        prevTimestampRef.current = now;
-
-        let rtt = 0;
-        let jitter = 0;
-        let packetsLost = 0;
-        let packetsSent = 0;
-        let bytesSent = 0;
-        let fps = 0;
-        let resWidth = 0;
-        let resHeight = 0;
-
-        stats.forEach((report) => {
-          if (report.type === 'candidate-pair' && (report.selected || report.state === 'succeeded')) {
-            if (report.currentRoundTripTime !== undefined) {
-              rtt = Math.round(report.currentRoundTripTime * 1000);
-            }
-          }
-
-          if (report.type === 'outbound-rtp' && report.kind === 'video') {
-            bytesSent = report.bytesSent || 0;
-            packetsSent = report.packetsSent || 0;
-            if (report.framesPerSecond !== undefined) {
-              fps = Math.round(report.framesPerSecond);
-            }
-            if (report.frameWidth && report.frameHeight) {
-              resWidth = report.frameWidth;
-              resHeight = report.frameHeight;
-            }
-          }
-
-          if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
-            packetsLost = report.packetsLost || 0;
-            if (report.jitter !== undefined) {
-              jitter = Math.round(report.jitter * 1000);
-            }
-          }
-        });
-
-        // Compute bitrate
-        const bytesDelta = Math.max(0, bytesSent - prevBytesSentRef.current);
-        const bitrateKbps = timeDelta > 0 ? Math.round((bytesDelta * 8) / (timeDelta * 1000)) : 0;
-        prevBytesSentRef.current = bytesSent;
-
-        // Compute packet loss rate
-        const sentDelta = Math.max(0, packetsSent - prevPacketsSentRef.current);
-        const lostDelta = Math.max(0, packetsLost - prevPacketsLostRef.current);
-        prevPacketsSentRef.current = packetsSent;
-        prevPacketsLostRef.current = packetsLost;
-
-        let packetLossPercent = 0;
-        if (sentDelta + lostDelta > 0) {
-          packetLossPercent = Math.min(100, Math.round((lostDelta / (sentDelta + lostDelta)) * 100));
-        }
-
-        // Determine health status
-        let status: 'excellent' | 'good' | 'fair' | 'poor' = 'good';
-        if (rtt < 100 && packetLossPercent <= 1) {
-          status = 'excellent';
-        } else if (rtt < 220 && packetLossPercent <= 3) {
-          status = 'good';
-        } else if (rtt < 400 || packetLossPercent <= 8) {
-          status = 'fair';
-        } else {
-          status = 'poor';
-        }
-
-        // AUTO ADAPTATION LOGIC
-        if (quality === 'auto') {
-          if (packetLossPercent > 8 || rtt > 450) {
-            // Severe congestion: aggressively throttle to avoid frozen screen or disconnect
-            pristineStreakRef.current = 0;
-            adjustEncoding(pc, 300, 2.5);
-          } else if (packetLossPercent > 3 || rtt > 220) {
-            // Moderate congestion: step down resolution & bitrate
-            pristineStreakRef.current = 0;
-            adjustEncoding(pc, 800, 1.5);
-          } else if (status === 'excellent' || status === 'good') {
-            // Pristine network: increase quality if condition remains steady
-            pristineStreakRef.current += 1;
-            if (pristineStreakRef.current >= 4) {
-              adjustEncoding(pc, 2500, 1);
-            }
-          }
-        }
-
-        setTelemetry({
-          rttMs: rtt,
-          packetLossPercent,
-          jitterMs: jitter,
-          bitrateKbps,
-          fps,
-          resolution: resWidth && resHeight ? `${resWidth}x${resHeight}` : 'Dynamic',
-          status,
-          isAutoActive: quality === 'auto',
-        });
-      } catch (err) {
-        console.warn('[useAdaptiveBitrate] Stats collection failed:', err);
+      // Determine overall health status
+      let status: 'excellent' | 'good' | 'fair' | 'poor' = 'good';
+      if (worstRtt < 100 && worstLoss <= 1) {
+        status = 'excellent';
+      } else if (worstRtt < 220 && worstLoss <= 3) {
+        status = 'good';
+      } else if (worstRtt < 400 || worstLoss <= 8) {
+        status = 'fair';
+      } else {
+        status = 'poor';
       }
+
+      setTelemetry({
+        rttMs: worstRtt,
+        packetLossPercent: worstLoss,
+        jitterMs: connectedCount > 0 ? Math.round(totalJitter / connectedCount) : 0,
+        bitrateKbps: totalBitrateKbps,
+        fps: bestFps,
+        resolution: bestResWidth && bestResHeight ? `${bestResWidth}x${bestResHeight}` : 'Dynamic',
+        status,
+        isAutoActive: quality === 'auto',
+      });
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [enabled, peerConnections, quality, adjustEncoding]);
+  }, [enabled, peerConnections, peerConnectionsVersion, quality, adjustEncoding]);
 
-  return telemetry;
+  return { telemetry, applyManualBitrate };
 }

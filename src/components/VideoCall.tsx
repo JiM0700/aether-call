@@ -42,6 +42,7 @@ interface VideoCallProps {
   };
   selectedAudioDeviceId: string;
   selectedVideoDeviceId: string;
+  selectedAudioOutputId: string;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onFlipCamera: () => void;
@@ -50,6 +51,7 @@ interface VideoCallProps {
   onSelectStabilization: (mode: StabilizationMode) => void;
   onSelectAudioDevice: (id: string) => void;
   onSelectVideoDevice: (id: string) => void;
+  onSelectAudioOutput: (id: string) => void;
   onLeaveCall: () => void;
 }
 
@@ -71,6 +73,7 @@ export const VideoCall: React.FC<VideoCallProps> = ({
   availableDevices,
   selectedAudioDeviceId,
   selectedVideoDeviceId,
+  selectedAudioOutputId,
   onToggleAudio,
   onToggleVideo,
   onFlipCamera,
@@ -79,6 +82,7 @@ export const VideoCall: React.FC<VideoCallProps> = ({
   onSelectStabilization,
   onSelectAudioDevice,
   onSelectVideoDevice,
+  onSelectAudioOutput,
   onLeaveCall,
 }) => {
   const [showStatsHUD, setShowStatsHUD] = useState(false);
@@ -104,13 +108,28 @@ export const VideoCall: React.FC<VideoCallProps> = ({
       const el = remoteVideoRefs.current.get(id);
       if (el && el.srcObject !== participant.stream) {
         el.srcObject = participant.stream;
+        if (selectedAudioOutputId && 'setSinkId' in el && typeof (el as any).setSinkId === 'function') {
+          (el as any).setSinkId(selectedAudioOutputId).catch(() => {});
+        }
         el.play().catch((err) => {
           console.warn('[VideoCall] Autoplay blocked, awaiting user tap:', err);
           setAudioBlocked(true);
         });
       }
     });
-  }, [remoteParticipants]);
+  }, [remoteParticipants, selectedAudioOutputId]);
+
+  // Apply audio output speaker device if setSinkId is supported
+  useEffect(() => {
+    if (!selectedAudioOutputId) return;
+    remoteVideoRefs.current.forEach((el) => {
+      if ('setSinkId' in el && typeof (el as any).setSinkId === 'function') {
+        (el as any).setSinkId(selectedAudioOutputId).catch((err: any) => {
+          console.warn('[VideoCall] Failed to set sinkId on video element:', err);
+        });
+      }
+    });
+  }, [selectedAudioOutputId]);
 
   const handleUnlockAudio = () => {
     remoteVideoRefs.current.forEach((el) => {
@@ -346,10 +365,12 @@ export const VideoCall: React.FC<VideoCallProps> = ({
           availableDevices={availableDevices}
           selectedAudioDeviceId={selectedAudioDeviceId}
           selectedVideoDeviceId={selectedVideoDeviceId}
+          selectedAudioOutputId={selectedAudioOutputId}
           stabilizationMode={stabilizationMode}
           isHardwareStabilized={isHardwareStabilized}
           onSelectAudioDevice={onSelectAudioDevice}
           onSelectVideoDevice={onSelectVideoDevice}
+          onSelectAudioOutput={onSelectAudioOutput}
           onSelectStabilization={onSelectStabilization}
           onClose={() => setShowSettingsModal(false)}
         />
