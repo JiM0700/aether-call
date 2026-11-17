@@ -7,6 +7,9 @@ import {
   Sparkles,
   Volume2,
   VolumeX,
+  AlertTriangle,
+  Loader2,
+  Server,
 } from 'lucide-react';
 import type { RemoteParticipant } from '../hooks/useWebRTC';
 import type { NetworkTelemetry } from '../hooks/useAdaptiveBitrate';
@@ -17,6 +20,7 @@ import { StatsHUD } from './StatsHUD';
 import { QualityModal } from './QualityModal';
 import { DeviceSettings } from './DeviceSettings';
 import { ShareModal } from './ShareModal';
+import { SignalingModal } from './SignalingModal';
 
 interface VideoCallProps {
   roomId: string;
@@ -27,6 +31,9 @@ interface VideoCallProps {
   remoteParticipants: Map<string, RemoteParticipant>;
   participantCount: number;
   connectionStatus: string;
+  signalingStatus: 'idle' | 'connecting' | 'connected' | 'error' | 'disconnected';
+  signalingError: string | null;
+  signalingUrl: string;
   isAudioMuted: boolean;
   isVideoMuted: boolean;
   isScreenSharing: boolean;
@@ -62,6 +69,9 @@ export const VideoCall: React.FC<VideoCallProps> = ({
   screenStream,
   remoteParticipants,
   participantCount,
+  signalingStatus,
+  signalingError: _signalingError,
+  signalingUrl,
   isAudioMuted,
   isVideoMuted,
   isScreenSharing,
@@ -89,6 +99,7 @@ export const VideoCall: React.FC<VideoCallProps> = ({
   const [showQualityModal, setShowQualityModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showSignalingModal, setShowSignalingModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
 
@@ -157,8 +168,24 @@ export const VideoCall: React.FC<VideoCallProps> = ({
         <div className="flex items-center gap-2 pointer-events-auto">
           {/* Room Token Badge */}
           <div className="glass-panel px-3 py-1.5 rounded-2xl flex items-center gap-2 text-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span
+              className={`w-2 h-2 rounded-full ${
+                signalingStatus === 'connected'
+                  ? 'bg-emerald-400 animate-pulse'
+                  : signalingStatus === 'connecting'
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-rose-500'
+              }`}
+            />
             <span className="font-mono text-slate-300 font-semibold">{roomId}</span>
+            {signalingStatus !== 'connected' && (
+              <button
+                onClick={() => setShowSignalingModal(true)}
+                className="text-[10px] text-amber-300 underline font-medium hover:text-amber-200"
+              >
+                {signalingStatus === 'error' ? 'Server Offline' : signalingStatus}
+              </button>
+            )}
           </div>
 
           {/* Participant count */}
@@ -189,6 +216,14 @@ export const VideoCall: React.FC<VideoCallProps> = ({
 
         {/* Quick Invite Link */}
         <div className="flex items-center gap-2 pointer-events-auto">
+          <button
+            onClick={() => setShowSignalingModal(true)}
+            title="Signaling Relay Server"
+            className="glass-panel px-2.5 py-1.5 rounded-2xl flex items-center gap-1.5 text-xs text-slate-300 hover:bg-white/10 transition"
+          >
+            <Server className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden md:inline">Relay</span>
+          </button>
           <button
             onClick={() => setShowShareModal(true)}
             className="glass-panel px-3 py-1.5 rounded-2xl flex items-center gap-1.5 text-xs font-medium text-slate-200 hover:bg-white/10 transition shadow-lg"
@@ -254,42 +289,76 @@ export const VideoCall: React.FC<VideoCallProps> = ({
             ))}
           </div>
         ) : (
-          // Waiting for peer card
+          // Waiting or Connecting card
           <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
-            <div className="max-w-md w-full glass-panel-elevated p-8 rounded-3xl border border-white/10 space-y-5 animate-in fade-in duration-300">
-              <div className="w-16 h-16 rounded-3xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mx-auto flex items-center justify-center">
-                <Share2 className="w-8 h-8 animate-pulse-subtle" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">Waiting for others to join...</h3>
-                <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                  Share this secure link or QR code with another person on iPhone, Android, Mac, or Windows.
-                </p>
-              </div>
-
-              {/* Quick Copy Box */}
-              <div className="flex items-center gap-2 p-2 rounded-2xl bg-slate-900/80 border border-white/10">
-                <span className="text-xs text-slate-300 font-mono truncate px-2">
-                  {callUrl}
-                </span>
+            {signalingStatus === 'error' ? (
+              <div className="max-w-md w-full glass-panel-elevated p-8 rounded-3xl border border-rose-500/30 space-y-5 animate-in fade-in duration-300">
+                <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 mx-auto flex items-center justify-center">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Signaling Relay Disconnected</h3>
+                  <p className="text-xs text-rose-300/80 mt-2 leading-relaxed">
+                    Cannot reach the signaling server at <code className="bg-slate-900 px-2 py-0.5 rounded text-white font-mono">{signalingUrl || 'server'}</code>.
+                    GitHub Pages is a static host and cannot run WebSockets without an external relay.
+                  </p>
+                </div>
                 <button
-                  onClick={handleCopyLink}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shrink-0 transition"
+                  onClick={() => setShowSignalingModal(true)}
+                  className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-xl transition"
                 >
-                  {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  Configure Relay URL / Local Run Guide
                 </button>
               </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center justify-center gap-1.5 mx-auto"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Show QR Code for instant mobile scanning
-                </button>
+            ) : participantCount > 1 ? (
+              <div className="max-w-md w-full glass-panel-elevated p-8 rounded-3xl border border-blue-500/30 space-y-5 animate-in fade-in duration-300">
+                <div className="w-16 h-16 rounded-3xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mx-auto flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Connecting Media...</h3>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    Participant detected in room! Negotiating direct peer-to-peer connection.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              // Waiting for peer card
+              <div className="max-w-md w-full glass-panel-elevated p-8 rounded-3xl border border-white/10 space-y-5 animate-in fade-in duration-300">
+                <div className="w-16 h-16 rounded-3xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mx-auto flex items-center justify-center">
+                  <Share2 className="w-8 h-8 animate-pulse-subtle" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Waiting for others to join...</h3>
+                  <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                    Share this secure link or QR code with another person on iPhone, Android, Mac, or Windows.
+                  </p>
+                </div>
+
+                {/* Quick Copy Box */}
+                <div className="flex items-center gap-2 p-2 rounded-2xl bg-slate-900/80 border border-white/10">
+                  <span className="text-xs text-slate-300 font-mono truncate px-2">
+                    {callUrl}
+                  </span>
+                  <button
+                    onClick={handleCopyLink}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shrink-0 transition"
+                  >
+                    {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center justify-center gap-1.5 mx-auto"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Show QR Code for instant mobile scanning
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -378,6 +447,20 @@ export const VideoCall: React.FC<VideoCallProps> = ({
 
       {showShareModal && (
         <ShareModal callUrl={callUrl} onClose={() => setShowShareModal(false)} />
+      )}
+
+      {showSignalingModal && (
+        <SignalingModal
+          currentUrl={signalingUrl}
+          onSave={(url) => {
+            if (url) {
+              localStorage.setItem('aether_signaling_url', url);
+            } else {
+              localStorage.removeItem('aether_signaling_url');
+            }
+          }}
+          onClose={() => setShowSignalingModal(false)}
+        />
       )}
     </div>
   );

@@ -8,8 +8,11 @@ import {
   Zap,
   HardDrive,
   ArrowRight,
+  Server,
+  AlertTriangle,
 } from 'lucide-react';
 import type { StabilizationMode } from '../utils/stabilization';
+import { SignalingModal } from './SignalingModal';
 
 interface RoomLobbyProps {
   roomId: string | null;
@@ -43,7 +46,11 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   onStartCall,
 }) => {
   const [manualRoomInput, setManualRoomInput] = useState<string>('');
+  const [showSignalingModal, setShowSignalingModal] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
+  const hasCustomRelay = typeof window !== 'undefined' && !!localStorage.getItem('aether_signaling_url');
 
   const handleJoinOrStart = () => {
     let target = roomId;
@@ -64,19 +71,29 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 md:p-6 bg-gradient-to-b from-[#090d16] via-[#070a12] to-[#04060a]">
       {/* Top Brand Banner */}
-      <div className="flex items-center gap-3 mb-6 md:mb-8">
-        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/25">
-          <Video className="w-5 h-5 text-white" />
+      <div className="w-full max-w-4xl flex items-center justify-between mb-6 md:mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/25">
+            <Video className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              AetherCall
+              <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                Zero-Storage
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400">High-Clarity Real-Time Web Calling</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-            AetherCall
-            <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-              Zero-Storage
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400">High-Clarity Real-Time Web Calling</p>
-        </div>
+
+        <button
+          onClick={() => setShowSignalingModal(true)}
+          className="glass-panel px-3 py-1.5 rounded-2xl flex items-center gap-1.5 text-xs text-slate-300 hover:bg-white/10 transition"
+        >
+          <Server className="w-3.5 h-3.5 text-slate-400" />
+          <span className="hidden sm:inline">Relay Server</span>
+        </button>
       </div>
 
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
@@ -223,6 +240,23 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             </div>
           </div>
 
+          {/* Static Host Notice */}
+          {isGitHubPages && !hasCustomRelay && (
+            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-200">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+              <div className="text-[11px] leading-relaxed">
+                <strong>Static Host Notice:</strong> GitHub Pages requires a signaling relay to connect participants.{' '}
+                <button
+                  type="button"
+                  onClick={() => setShowSignalingModal(true)}
+                  className="underline font-semibold text-amber-300 hover:text-white"
+                >
+                  Configure Relay URL
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Join / Start Button */}
           <button
             onClick={handleJoinOrStart}
@@ -249,6 +283,20 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
           </div>
         </div>
       </div>
+
+      {showSignalingModal && (
+        <SignalingModal
+          currentUrl={localStorage.getItem('aether_signaling_url') || ''}
+          onSave={(url) => {
+            if (url) {
+              localStorage.setItem('aether_signaling_url', url);
+            } else {
+              localStorage.removeItem('aether_signaling_url');
+            }
+          }}
+          onClose={() => setShowSignalingModal(false)}
+        />
+      )}
     </div>
   );
 };

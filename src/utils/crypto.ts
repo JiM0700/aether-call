@@ -28,24 +28,37 @@ export function generateClientSecretKey(): string {
 }
 
 // Build shareable link including the client-side hash key and base path
-export function createShareableCallUrl(roomId: string, secretKey: string): string {
+export function createShareableCallUrl(roomId: string, secretKey: string, relayUrl?: string | null): string {
   const origin = window.location.origin;
   const basePath = getAppBasePath();
-  return `${origin}${basePath}/call/${roomId}#key=${secretKey}`;
+  const effectiveRelay = relayUrl || (typeof window !== 'undefined' ? localStorage.getItem('aether_signaling_url') : null);
+  const query = effectiveRelay ? `?relay=${encodeURIComponent(effectiveRelay)}` : '';
+  return `${origin}${basePath}/call/${roomId}${query}#key=${secretKey}`;
 }
 
 // Parse room ID and hash key from current URL
-export function parseCallUrl(): { roomId: string | null; secretKey: string | null } {
-  if (typeof window === 'undefined') return { roomId: null, secretKey: null };
+export function parseCallUrl(): { roomId: string | null; secretKey: string | null; relayUrl: string | null } {
+  if (typeof window === 'undefined') return { roomId: null, secretKey: null, relayUrl: null };
 
   const path = window.location.pathname;
   const match = path.match(/\/call\/([a-zA-Z0-9_-]+)/);
   let roomId = match ? match[1] : null;
 
-  // Support query parameter fallback (e.g. ?room=xyz or ?roomId=xyz)
-  if (!roomId && window.location.search) {
+  let relayUrl: string | null = null;
+  // Support query parameter fallback (e.g. ?room=xyz or ?roomId=xyz or ?relay=https://...)
+  if (window.location.search) {
     const searchParams = new URLSearchParams(window.location.search);
-    roomId = searchParams.get('room') || searchParams.get('roomId') || null;
+    if (!roomId) {
+      roomId = searchParams.get('room') || searchParams.get('roomId') || null;
+    }
+    relayUrl = searchParams.get('relay') || null;
+    if (relayUrl) {
+      try {
+        localStorage.setItem('aether_signaling_url', relayUrl);
+      } catch (e) {
+        // Ignore localStorage quota errors
+      }
+    }
   }
 
   let secretKey: string | null = null;
@@ -64,5 +77,5 @@ export function parseCallUrl(): { roomId: string | null; secretKey: string | nul
     }
   }
 
-  return { roomId, secretKey };
+  return { roomId, secretKey, relayUrl };
 }

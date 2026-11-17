@@ -40,17 +40,13 @@ An ultra-secure, zero-storage real-time video calling web application designed f
 
 ## 🚀 Quick Start
 
-### 1. Start Development Server (with Local HTTPS for Mobile Testing)
+### 1. Start Development Server (Single Command — Embedded Signaling & HTTPS)
 
 ```bash
-# Terminal 1: Start the ephemeral signaling server (Port 3001)
-npm run server
-
-# Terminal 2: Start the frontend with HTTPS (Port 5173)
 npm run dev
 ```
 
-The Vite dev server will display both the local URL and your local network IP:
+The Vite dev server embeds the WebRTC signaling relay directly on port 5173:
 - **Local (Desktop)**: `https://localhost:5173/`
 - **Network (Mobile / iPhone / Android on same Wi-Fi)**: `https://<your-local-ip>:5173/`
 
@@ -60,12 +56,22 @@ The Vite dev server will display both the local URL and your local network IP:
 
 ### 2. Start Production Mode (Single Port Unified Server)
 
-To run the unified server that serves the optimized production client and in-memory WebSockets on a single port:
+To run the unified Express server serving both the production client bundle and in-memory WebSockets on a single port:
 
 ```bash
+npm run build
 npm run start
 ```
 The application will be accessible at `http://localhost:3001` (or your configured `PORT`).
+
+---
+
+### 3. Deploying with GitHub Pages (Static Frontend + Free Cloud Relay)
+
+GitHub Pages hosts static files and cannot run WebSockets directly. For GitHub Pages deployments:
+1. Deploy this repository as a free Web Service on [Render](https://render.com) using the included `render.yaml` (Build: `npm run build`, Start: `npm run start`).
+2. In your GitHub Pages app, click **Relay Server** at the top right and enter your Render URL (e.g. `https://your-app.onrender.com`).
+3. Any invite links you share will automatically include the relay URL (`?relay=...`), allowing invited participants to connect immediately without any manual configuration!
 
 ---
 

@@ -33,6 +33,9 @@ export interface UseWebRTCProps {
 export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStream }: UseWebRTCProps) {
   const [remoteParticipants, setRemoteParticipants] = useState<Map<string, RemoteParticipant>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
+  const [signalingStatus, setSignalingStatus] = useState<'idle' | 'connecting' | 'connected' | 'error' | 'disconnected'>('idle');
+  const [signalingError, setSignalingError] = useState<string | null>(null);
+  const [signalingUrl, setSignalingUrl] = useState<string>('');
   const [participantCount, setParticipantCount] = useState<number>(1);
   const [peerConnectionsVersion, setPeerConnectionsVersion] = useState<number>(0);
 
@@ -62,7 +65,7 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
         socketRef.current.emit('signal', {
           to: targetSocketId,
           type: 'ice-candidate',
-          data: event.candidate,
+          data: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
         });
       }
     };
@@ -176,7 +179,17 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
     const envUrl = (import.meta as any).env?.VITE_SIGNALING_URL;
     const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
     const localSavedRelay = typeof window !== 'undefined' ? localStorage.getItem('aether_signaling_url') : null;
-    const signalingTarget = envUrl || (isGitHubPages ? localSavedRelay || undefined : undefined);
+    const signalingTarget = envUrl || localSavedRelay || (isGitHubPages ? undefined : undefined);
+    const resolvedUrl = signalingTarget || (typeof window !== 'undefined' ? window.location.origin : '');
+    setSignalingUrl(resolvedUrl);
+    setSignalingStatus('connecting');
+    setSignalingError(null);
+
+    // If on GitHub Pages without an explicit relay URL, set immediate clear error status
+    if (isGitHubPages && !signalingTarget) {
+      setSignalingStatus('error');
+      setSignalingError('GitHub Pages requires an external signaling relay server. Please configure one.');
+    }
 
     // Connect to signaling server
     const socket = signalingTarget
@@ -192,7 +205,20 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
 
     socket.on('connect', () => {
       console.log('[Signaling] Connected to server, joining room:', roomId);
+      setSignalingStatus('connected');
+      setSignalingError(null);
       socket.emit('join-room', { roomId, userName });
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('[Signaling] Connection error:', err.message);
+      setSignalingStatus('error');
+      setSignalingError(err.message || 'Failed to connect to signaling server');
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('[Signaling] Disconnected:', reason);
+      setSignalingStatus('disconnected');
     });
 
     // Existing peers in room: we initiate an offer to each of them
@@ -320,6 +346,9 @@ export function useWebRTC({ roomId, userName = 'Guest', localStream, screenStrea
   return {
     remoteParticipants,
     connectionStatus,
+    signalingStatus,
+    signalingError,
+    signalingUrl,
     participantCount,
     peerConnections: peerConnectionsRef.current,
     peerConnectionsVersion,

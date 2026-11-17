@@ -70,6 +70,9 @@ export const App: React.FC = () => {
   const {
     remoteParticipants,
     connectionStatus,
+    signalingStatus,
+    signalingError,
+    signalingUrl,
     participantCount,
     peerConnections,
     peerConnectionsVersion,
@@ -174,6 +177,9 @@ export const App: React.FC = () => {
           remoteParticipants={remoteParticipants}
           participantCount={participantCount}
           connectionStatus={connectionStatus}
+          signalingStatus={signalingStatus}
+          signalingError={signalingError}
+          signalingUrl={signalingUrl}
           isAudioMuted={isAudioMuted}
           isVideoMuted={isVideoMuted}
           isScreenSharing={isScreenSharing}
